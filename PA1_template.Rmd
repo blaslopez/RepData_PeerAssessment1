@@ -5,21 +5,218 @@ output:
     keep_md: true
 ---
 
+## Dependencies
 
+- Required R packages:
+* knitr 
+* ggplot2 
+* dplyr
+
+```{r Initialize, echo=FALSE , message=FALSE , warning = FALSE}
+local({r <- getOption("repos"); 
+       r["CRAN"] <- "http://cran.r-project.org"; options(repos=r)})
+
+# If knitr is not present it is installed
+if ("knitr" %in% rownames(installed.packages()) == FALSE) {
+  install.packages("knitr")
+}
+library(knitr, quietly = TRUE)
+
+# If ggplot2 is not present it is installed
+if("ggplot2" %in% rownames(installed.packages()) == FALSE) {
+  install.packages("ggplot2")
+}
+library(ggplot2, quietly = TRUE)
+
+# If plyr is not present it is installed
+if("dplyr" %in% rownames(installed.packages()) == FALSE) {
+  install.packages("dplyr")
+}
+library(dplyr, quietly = TRUE)
+
+library(scales, quietly = TRUE)
+
+# Dataset Location URL 
+Dataset.Location <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+```
 ## Loading and preprocessing the data
 
+The variables included in this dataset are:
+
+- **steps**: Number of steps taking in a 5-minute interval (missing values are coded as `NA`)
+- **date**: The date on which the measurement was taken in YYYY-MM-DD format
+- **interval**: Identifier for the 5-minute interval in which measurement was taken. The value in base 60 representing hours and minutes (hhmm)
+
+The dataset is stored in a comma-separated-value (CSV) file and there are a total of 17,568 observations in this dataset.
+
+
+The [orignal Dataset](`r Dataset.Location`) is downloaded, unzipped and loaded into the `activity` data.frame
+
+```{r LoadDataset, echo=TRUE}
+download.file(Dataset.Location,dest="data.zip",method="curl")
+unzip(zipfile = "data.zip", overwrite=TRUE)
+activity <- read.csv("activity.csv")
+summary(activity)
+```
 
 
 ## What is mean total number of steps taken per day?
 
+Using only `completeCases` the data is aggregated by `date` having the total number of `steps` by day
+
+```{r AggretateData, echo=TRUE}
+completeCases <- activity[complete.cases(activity),]
+stepsByDay <- aggregate(completeCases$steps,by=list(completeCases$date), FUN=sum)
+names(stepsByDay) <- c("date","totalSteps")
+```
+
+There is a histogram of the total number of steps taken each day
+
+```{r StepsByDayHistogram, message=FALSE, echo=FALSE}
+
+p <- ggplot(stepsByDay, aes(x=totalSteps))
+p + geom_histogram(fill="white", colour="darkblue") 
+
+```
+
+```{r echo=FALSE}
+stepsmean <-round(mean(stepsByDay$totalSteps),2)
+stepsmedian <- median(stepsByDay$totalSteps)
+```
+
+In this dataset, supressing `NA` values, the **mean** and **median** values for the `totalSteps` per day are `r stepsmean ` and `r stepsmedian` respectively.
 
 
 ## What is the average daily activity pattern?
 
+The pattern will be described using a time series plot of the total steps by interval (5 minutes).
 
+```{r ActivityPattern, echo=TRUE }
+stepsByInterval <- aggregate(completeCases$steps,by=list(completeCases$interval), FUN=mean)
+names(stepsByInterval) <- c("interval","averageSteps")
+```
+
+
+This is the time series of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis)
+
+```{r ActivityPatternTimeSerie, echo=FALSE}
+
+# The interval is converted from a hhmm value in base 60 to the number of minutes from 00:00 and
+# converted to seconds and finally added to a random data
+
+stepsByInterval$interval <- 
+    as.POSIXct.numeric( 
+        (  ( ( stepsByInterval$interval %/% 100) * 60 )
+         + ( stepsByInterval$interval %% 100 )
+        ) * 60
+       , origin = "1998-01-29 00:00:00 GMT", tz = "GMT" )
+
+# this is the plot
+q <- qplot(interval,averageSteps, data=stepsByInterval, 
+           xlab = "Minute of the day", ylab = "Average of steps",
+           main = " Average of steps during the day")
+
+q + geom_line(colour = "darkblue") + 
+  scale_x_datetime( breaks = "1 hour" , labels = date_format("%H:%M")) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+ 
+```
+
+```{r MaxAverage, echo=FALSE}
+# Row index for the max average steps
+maxIndex <- which(stepsByInterval$averageSteps==max(stepsByInterval$averageSteps))
+
+# max interval
+maxInterval <- format(stepsByInterval$interval[maxIndex],"%H:%M")
+```
+
+
+The 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps is **`r maxInterval`**
 
 ## Imputing missing values
 
+In the original dataset there are `r sum(is.na(activity$steps))` rows with `NA` values in the `steps` column.
 
+The values for this cases are calculated, and updated, using the **mean** for the same interval in complete cases.
+
+```{r ImputingMissingValues, echo=TRUE}
+
+# This function is used in order to calculate the mean for an interval
+intervalAvg <- function (itv) {
+  mean(allCases$steps[allCases$interval == itv],na.rm=TRUE)
+}
+
+# A new data frame, with all cases is created
+allCases <- activity
+
+# steps are calculated, when missing, replacing NA by
+# the mean in the same interval and not change for not NA
+allCases <- within(allCases, 
+                   steps <- ifelse(is.na(steps),
+                                   intervalAvg(interval),
+                                   steps))
+
+
+```
+
+Considering all cases and the values calculated for `NA`cases the histogram is :
+```{r allStepsByDaysHistogram,   message=FALSE, echo=FALSE}
+stepsByAllDays <- aggregate(allCases$steps,by=list(allCases$date), FUN=sum)
+names(stepsByAllDays) <- c("date","totalSteps")
+
+r <- ggplot(stepsByAllDays, aes(x=totalSteps))
+r + geom_histogram(fill="white", colour="darkgreen") 
+
+```
+
+```{r echo=FALSE}
+stepsmeanallcases <-round(mean(stepsByAllDays$totalSteps),2)
+stepsmedianallcases <- median(stepsByAllDays$totalSteps)
+```
+
+In this new dataset, including the correction in the **steps** values ( `r sum(is.na(allCases$steps))` `NA` steps values), the **mean** and **median** values for the `totalSteps` per day are `r stepsmeanallcases ` and `r stepsmedianallcases` respectively.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+Two new columns are added to allCases data frame (the original activity data frame including a correction for `NA`values) :
+
+* **weekday** contains the string with the week day name 
+* **weekend** indicates if the day corresponds to a weekday or weekend (Saturday or Sunday)
+
+```{r AddWeekend, echo=TRUE}
+allCases["weekday"] <- weekdays(as.Date(allCases$date))
+allCases["weekend"] <- ifelse(as.POSIXlt(allCases$date)$wday >=6,"weekend","weekday")
+```
+
+Using the **weekend** column it is possible to plot this graph representing different patterns for weekdays and weekend
+
+```{r WeekActivityPatternTimeSerie, echo=FALSE}
+
+# The data is aggregated by interval and weekend day (true or false)
+stepsByIntervalWeekday <- aggregate(allCases$steps,by=list(allCases$interval,allCases$weekend), FUN=mean)
+names(stepsByIntervalWeekday) <- c("interval","weekend","averageSteps")
+
+
+# The interval is converted from a hhmm value in base 60 to the number of minutes from 00:00 and
+# converted to seconds and finally added to a random data
+
+stepsByIntervalWeekday$interval <- 
+    as.POSIXct.numeric( 
+        (  ( ( stepsByIntervalWeekday$interval %/% 100) * 60 )
+         + ( stepsByIntervalWeekday$interval %% 100 )
+        ) * 60
+       , origin = "1998-01-29 00:00:00 GMT", tz = "GMT" )
+
+# this is the plot
+s <- qplot(interval,averageSteps,data=stepsByIntervalWeekday,
+           xlab = "Minute of the day", ylab = "Average of steps",
+           main = " Average of steps during the day")
+
+s + geom_line(colour = "black") + 
+  scale_x_datetime( breaks = "1 hour" , labels = date_format("%H:%M")) +
+  facet_grid( weekend ~ .) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+
+```
+
+
