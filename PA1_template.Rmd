@@ -11,6 +11,7 @@ output:
 * knitr 
 * ggplot2 
 * dplyr
+* RCurl
 
 ```{r Initialize, echo=FALSE , message=FALSE , warning = FALSE}
 local({r <- getOption("repos"); 
@@ -34,6 +35,11 @@ if("dplyr" %in% rownames(installed.packages()) == FALSE) {
 }
 library(dplyr, quietly = TRUE)
 
+# If RCurl is not present it is installed
+if("RCurl" %in% rownames(installed.packages()) == FALSE) {
+  install.packages("RCurl")
+}
+
 library(scales, quietly = TRUE)
 
 # Dataset Location URL 
@@ -53,6 +59,7 @@ The dataset is stored in a comma-separated-value (CSV) file and there are a tota
 The [orignal Dataset](`r Dataset.Location`) is downloaded, unzipped and loaded into the `activity` data.frame
 
 ```{r LoadDataset, echo=TRUE}
+
 download.file(Dataset.Location,dest="data.zip",method="curl")
 unzip(zipfile = "data.zip", overwrite=TRUE)
 activity <- read.csv("activity.csv")
